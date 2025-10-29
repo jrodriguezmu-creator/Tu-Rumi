@@ -58,7 +58,28 @@ export const getMatches = async () => {
 
     const res = await axios.get("/match", config);
     console.log("📬 Matches recibidos:", res.data);
-    return res.data;
+
+    const matches = Array.isArray(res.data.matches) ? res.data.matches : [];
+    // Para cada match, obtener el usuario destino usando to_id_user
+    const enriched = await Promise.all(
+      matches.map(async (m) => {
+        const toId = m.to_id_user;
+        if (!toId) return m;
+
+        try {
+          const userRes = await axios.get(`/user/${toId}`, config);
+          // adjuntamos los datos del usuario bajo la propiedad `to_user`
+          return { ...m, to_user: userRes.data };
+        } catch (userErr) {
+          console.warn(
+            `⚠️ No se pudo obtener usuario ${toId} para match ${m.id || m.matchId || ''}:`,
+            userErr.response?.data || userErr.message
+          );
+          return { ...m, to_user: null };
+        }
+      })
+    );
+    return enriched;
   } catch (err) {
     console.error("❌ Error al obtener matches:", err.response?.data || err.message);
     throw err;

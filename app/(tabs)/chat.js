@@ -10,6 +10,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getMatches } from "../../services/matchService";
 
+// 🔹 Función auxiliar para obtener un usuario por su ID
 const getUserById = async (id) => {
   try {
     const token = await AsyncStorage.getItem("accessToken");
@@ -30,37 +31,41 @@ export default function Chat() {
 
   const fetchMatches = async () => {
     try {
+      // 🔹 Obtener matches desde el service
       const data = await getMatches();
-      const allMatches = data.matches || [];
+      const allMatches = Array.isArray(data.matches) ? data.matches : [];
+      console.log("test" ,data);
+
+      // 🔹 Filtramos solo los "matched"
       const confirmed = allMatches.filter((m) => m.match_status === "matched");
 
-      // enriquecemos cada match con datos del usuario correspondiente
+      // 🔹 Identificar usuario actual (para saber cuál es el "otro")
+      const currentUser = await AsyncStorage.getItem("user");
+      const currentId = currentUser ? JSON.parse(currentUser).id_user : null;
+
+      // 🔹 Enriquecer con el usuario destino (to_id_user)
       const enriched = await Promise.all(
         confirmed.map(async (m) => {
-          const currentUser = await AsyncStorage.getItem("user");
-          const currentId = currentUser ? JSON.parse(currentUser).id_user : null;
-
-          const isFromUser = m.from_id_user === currentId;
-          const otherUserId = isFromUser ? m.to_id_user : m.from_id_user;
+          const otherUserId =
+            m.from_id_user === currentId ? m.to_id_user : m.from_id_user;
 
           const user = await getUserById(otherUserId);
-          return { ...m, user };
+          return { ...m, to_user: user };
         })
       );
 
       setMatches(enriched);
     } catch (err) {
-      console.error("Error cargando matches:", err);
+      console.error("❌ Error cargando matches:", err.response?.data || err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // 🧠 carga inicial y auto-refresh cada 5 s
   useEffect(() => {
     fetchMatches();
     const interval = setInterval(fetchMatches, 5000);
-    return () => clearInterval(interval); // limpiamos al desmontar
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -88,9 +93,11 @@ export default function Chat() {
         renderItem={({ item }) => (
           <View style={styles.matchCard}>
             <Text style={styles.name}>
-              {item.user?.name || "Usuario desconocido"}
+              {item.to_user?.name || "Usuario desconocido"}
             </Text>
-            <Text style={styles.status}>Estado: {item.match_status}</Text>
+            <Text style={styles.status}>
+              Estado: {item.match_status || "Sin estado"}
+            </Text>
           </View>
         )}
       />
